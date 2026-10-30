@@ -1,0 +1,32 @@
+# À placer dans le dépôt GitHub sous : .github/workflows/kobo-sync.yml
+name: Sync Kobo -> kobo_data.json
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"      # toutes les ~10 minutes (GitHub peut retarder de quelques minutes)
+  workflow_dispatch:             # bouton "Run workflow" pour forcer une mise à jour
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Télécharger les données Kobo
+        run: python kobo_sync.py --out kobo_data.json
+        env:
+          KOBO_SERVER: ${{ secrets.KOBO_SERVER }}
+          KOBO_ASSET_UID: ${{ secrets.KOBO_ASSET_UID }}
+          KOBO_TOKEN: ${{ secrets.KOBO_TOKEN }}
+          KOBO_DROP_FIELDS: ${{ secrets.KOBO_DROP_FIELDS }}
+      - name: Publier si changement
+        run: |
+          git config user.name "kobo-sync"
+          git config user.email "kobo-sync@users.noreply.github.com"
+          git add kobo_data.json
+          git diff --staged --quiet || (git commit -m "Mise à jour des données Kobo" && git push)
