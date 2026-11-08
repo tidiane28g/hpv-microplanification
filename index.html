@@ -60,6 +60,9 @@
   .hb-con{background:#2A8C82;height:100%}.hb-n{font-size:11px;color:#33475B;white-space:nowrap}
   .hb-leg,.donut-leg{font-size:10.5px;color:#6B7C8C;margin-top:8px}.hb-leg i,.donut-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 8px;vertical-align:-1px}.hb-leg i:first-child{margin-left:0}
   .donutbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.donut{width:150px;height:150px;flex:0 0 auto}.donut-leg div{margin:5px 0;font-size:12px;color:#33475B}.donut-leg i{margin-left:0}
+  .fullw{margin-top:0}.fullw .tablewrap{max-height:520px}.fullw th,.fullw td{white-space:normal;vertical-align:top}.fullw td.cut{max-width:340px}
+  .fullw th{vertical-align:bottom}.fullw td.num,.fullw th.num{text-align:right}.subnote{font-size:12px;color:var(--muted);margin:-4px 0 10px}
+  .fullw tr.totrow td{font-weight:700;background:#F7FAFB;position:sticky;bottom:0}
   .card h3{margin:0 0 10px;font-size:14px;color:var(--who-blue-dark);}
   #map{height:480px;border-radius:8px;}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px;}
@@ -183,17 +186,6 @@
           <span><i class="sw" style="background:#2E9E5B;border:2px solid #123047"></i> Validado pela região</span>
         </div>
       </div>
-      <div class="card">
-        <h3 id="tableTitle">Detalhe por área sanitária</h3>
-        <div class="tablewrap"><table id="areaTable"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div class="card">
-        <h3 id="logTitle">Plano de estimativa de necessidades — vacinas e consumíveis, por local</h3>
-        <p style="font-size:12px;color:var(--muted);margin:-4px 0 10px;">
-          Calculado a partir dos alvos recenseados por local (secção B) e dos parâmetros da área (esquema vacinal, apresentação do frasco, factor de perda — secção E).
-        </p>
-        <div class="tablewrap"><table id="logTable"><thead></thead><tbody></tbody></table></div>
-      </div>
     </div>
     <div>
       <div class="card side" id="sidePanel">
@@ -210,6 +202,27 @@
       </div>
     </div>
   </div>
+<div class="fullw">
+  <div class="card">
+    <h3 id="tableTitle">Detalhe por área sanitária</h3>
+    <div class="tablewrap"><table id="areaTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <h3 id="sumTitle">Resumo por área sanitária</h3>
+    <p class="subnote">Uma linha por área sanitária: as submissões da mesma área são somadas.</p>
+    <div class="tablewrap"><table id="sumTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <h3 id="logTitle">Plano de estimativa de necessidades — vacinas e consumíveis, por local</h3>
+    <p class="subnote">Calculado a partir dos alvos recenseados por local (secção B) e dos parâmetros da área (esquema vacinal, apresentação do frasco, factor de perda — secção E).</p>
+    <div class="tablewrap"><table id="logTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+  <div class="card">
+    <h3 id="logSumTitle">Resumo do plano de estimativa de necessidades — vacinas e consumíveis, por área sanitária</h3>
+    <p class="subnote">Soma dos locais de cada área sanitária.</p>
+    <div class="tablewrap"><table id="logSumTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+</div>
 </div>
 <footer>Ficheiro autónomo — funciona offline após o primeiro carregamento, exceto a ligação direta à API Kobo (que precisa de rede).</footer>
 
@@ -818,7 +831,7 @@ function renderTable(rows){
       const valTag = r.val_data ? '<span class="tag ok">✓</span>' : '<span class="tag mid">Pendente</span>';
       const geoWarn = resolveGeoAreaName(r.area_sanitaria) ? '' : ' <span class="pill warn" title="Sem correspondência no geojson">sem mapa</span>';
       return `<tr onclick="selectArea('${r.area_sanitaria.replace(/'/g,"\\'")}')">
-        <td>${r.regiao}</td><td><b>${r.area_sanitaria}</b>${geoWarn}</td>${showResp?`<td class="cut" title="${String(r.responsavel).replace(/"/g,'&quot;')}">${r.responsavel}</td>`:''}
+        <td>${regionLabel(r.regiao)}</td><td><b>${r.area_sanitaria}</b>${geoWarn}</td>${showResp?`<td class="cut" title="${String(r.responsavel).replace(/"/g,'&quot;')}">${r.responsavel}</td>`:''}
         <td>${r.nb_sites_total}</td><td>${r.pctC}%</td><td>${fmt(r.alvo_rotina)}</td><td>${fmt(r.alvo_mac)}</td>
         <td>${fmt(r.logistica_doses)}</td><td>${r.rh_vacinadores_necessarios}</td><td>${difTag}</td><td>${valTag}</td>
       </tr>`;
@@ -884,7 +897,7 @@ function renderLogTable(filteredMainRows){
     tot.doses+=l.doses; tot.frascos+=l.frascos; tot.seringas+=l.seringas; tot.caixas+=l.caixas; tot.cartoes+=l.cartoes; tot.fichas+=l.fichas; tot.livro+=l.livro;
     const tipoLbl = choiceLabel('tipo_site', s.site_tipo) || (s.site_tipo||'—');
     const warn = l.estimado ? ' <span class="pill" title="Parâmetros de logística (secção E) não encontrados nos dados — assumido 1 dose/rapariga, 1 dose/frasco">≈</span>' : '';
-    return `<tr><td>${i+1}</td><td>${area?area.regiao:'—'}</td><td>${s.area_sanitaria}</td><td class="cut" title="${String(s.site_nome).replace(/"/g,'&quot;')}">${s.site_nome}</td><td>${tipoLbl}</td>
+    return `<tr><td>${i+1}</td><td>${area?regionLabel(area.regiao):'—'}</td><td>${s.area_sanitaria}</td><td class="cut" title="${String(s.site_nome).replace(/"/g,'&quot;')}">${s.site_nome}</td><td>${tipoLbl}</td>
       <td>${fmt(l.alvo)}</td><td>${fmt(l.doses)}${warn}</td><td>${fmt(l.frascos)}</td><td>${fmt(l.seringas)}</td><td>${fmt(l.caixas)}</td>
       <td>${fmt(l.cartoes)}</td><td>${l.fichas}</td><td>${l.livro}</td></tr>`;
   }).join('');
@@ -892,6 +905,45 @@ function renderLogTable(filteredMainRows){
     <td>${fmt(tot.doses)}</td><td>${fmt(tot.frascos)}</td><td>${fmt(tot.seringas)}</td><td>${fmt(tot.caixas)}</td>
     <td>${fmt(tot.cartoes)}</td><td>${tot.fichas}</td><td>${tot.livro}</td></tr>`;
   tbody.innerHTML = bodyHtml;
+}
+
+function renderSumTable(rows){
+  const agg = Object.values(aggregateByArea(rows)).sort((a,b)=> (normJS(regionLabel(a.regiao)).localeCompare(normJS(regionLabel(b.regiao)))) || normJS(a.area_sanitaria).localeCompare(normJS(b.area_sanitaria)));
+  const cols=[['Região',0],['Área sanitária',0],['Submissões',1],['Locais',1],['Contactados',1],['% Contact.',1],['Alvo rotina (9 anos)',1],['Alvo MAC (10-14 anos)',1],['Escolarizadas',1],['Fora da escola',1],['Doses',1],['Vacinadores',1],['Dif. acesso',0],['Validado',0]];
+  document.querySelector('#sumTable thead').innerHTML='<tr>'+cols.map(c=>`<th class="${c[1]?'num':''}">${c[0]}</th>`).join('')+'</tr>';
+  const tb=document.querySelector('#sumTable tbody');
+  if(!agg.length){ tb.innerHTML=`<tr><td colspan="${cols.length}" class="empty">Nenhuma área com dados para este filtro.</td></tr>`; return; }
+  const T={n:0,s:0,c:0,r:0,m:0,e:0,f:0,d:0,v:0};
+  let h=agg.map(r=>{
+    T.n+=r.n_submissions;T.s+=r.nb_sites_total;T.c+=r.nb_sites_contactados;T.r+=r.alvo_rotina;T.m+=r.alvo_mac;T.e+=r.alvo_escolarizadas;T.f+=r.alvo_fora_escola;T.d+=r.logistica_doses;T.v+=r.rh_vacinadores_necessarios;
+    const pc=r.nb_sites_total?Math.round(100*r.nb_sites_contactados/r.nb_sites_total):0;
+    const dif=r._anyDif?'<span class="tag bad">Sim</span>':'<span class="tag no">Não</span>';
+    const val=r._allValidated?'<span class="tag ok">✓</span>':'<span class="tag mid">Pendente</span>';
+    return `<tr onclick="selectArea('${r.area_sanitaria.replace(/'/g,"\\'")}')"><td>${regionLabel(r.regiao)}</td><td><b>${r.area_sanitaria}</b></td><td class="num">${r.n_submissions}</td><td class="num">${fmt(r.nb_sites_total)}</td><td class="num">${fmt(r.nb_sites_contactados)}</td><td class="num">${pc}%</td><td class="num">${fmt(r.alvo_rotina)}</td><td class="num">${fmt(r.alvo_mac)}</td><td class="num">${fmt(r.alvo_escolarizadas)}</td><td class="num">${fmt(r.alvo_fora_escola)}</td><td class="num">${fmt(r.logistica_doses)}</td><td class="num">${fmt(r.rh_vacinadores_necessarios)}</td><td>${dif}</td><td>${val}</td></tr>`;
+  }).join('');
+  const pt=T.s?Math.round(100*T.c/T.s):0;
+  h+=`<tr class="totrow"><td colspan="2">Total (${agg.length} áreas)</td><td class="num">${fmt(T.n)}</td><td class="num">${fmt(T.s)}</td><td class="num">${fmt(T.c)}</td><td class="num">${pt}%</td><td class="num">${fmt(T.r)}</td><td class="num">${fmt(T.m)}</td><td class="num">${fmt(T.e)}</td><td class="num">${fmt(T.f)}</td><td class="num">${fmt(T.d)}</td><td class="num">${fmt(T.v)}</td><td></td><td></td></tr>`;
+  tb.innerHTML=h;
+}
+function renderLogSumTable(filteredMainRows){
+  const areaByName={}; filteredMainRows.forEach(r=>areaByName[r.area_sanitaria]=r);
+  const per={};
+  siteRows.forEach(s=>{
+    const area=areaByName[s.area_sanitaria]; if(!area) return;
+    const l=computeSiteLogistics(s,area);
+    const p=per[s.area_sanitaria]||(per[s.area_sanitaria]={reg:area.regiao,n:0,alvo:0,doses:0,frascos:0,seringas:0,caixas:0,cartoes:0,fichas:0,livro:0,est:false});
+    p.n++;p.alvo+=l.alvo;p.doses+=l.doses;p.frascos+=l.frascos;p.seringas+=l.seringas;p.caixas+=l.caixas;p.cartoes+=l.cartoes;p.fichas+=l.fichas;p.livro+=l.livro; if(l.estimado) p.est=true;
+  });
+  const names=Object.keys(per).sort((a,b)=> normJS(regionLabel(per[a].reg)).localeCompare(normJS(regionLabel(per[b].reg))) || normJS(a).localeCompare(normJS(b)));
+  const cols=[['Região',0],['Área sanitária',0],['Locais',1],['Alvo',1],['Doses',1],['Frascos',1],['Seringas AD',1],['Caixas incin.',1],['Cartões HPV',1],['Fichas resumo',1],['Livro registo',1]];
+  document.querySelector('#logSumTable thead').innerHTML='<tr>'+cols.map(c=>`<th class="${c[1]?'num':''}">${c[0]}</th>`).join('')+'</tr>';
+  const tb=document.querySelector('#logSumTable tbody');
+  if(!names.length){ tb.innerHTML=`<tr><td colspan="${cols.length}" class="empty">Sem locais carregados para este filtro.</td></tr>`; return; }
+  const T={n:0,alvo:0,doses:0,frascos:0,seringas:0,caixas:0,cartoes:0,fichas:0,livro:0};
+  let h=names.map(a=>{ const p=per[a]; Object.keys(T).forEach(k=>T[k]+=p[k]);
+    return `<tr onclick="selectArea('${a.replace(/'/g,"\\'")}')"><td>${regionLabel(p.reg)}</td><td><b>${a}</b>${p.est?' <span class="pill" title="Parâmetros de logística não encontrados — assumido 1 dose/rapariga, 1 dose/frasco">≈</span>':''}</td><td class="num">${p.n}</td><td class="num">${fmt(p.alvo)}</td><td class="num">${fmt(p.doses)}</td><td class="num">${fmt(p.frascos)}</td><td class="num">${fmt(p.seringas)}</td><td class="num">${fmt(p.caixas)}</td><td class="num">${fmt(p.cartoes)}</td><td class="num">${p.fichas}</td><td class="num">${p.livro}</td></tr>`; }).join('');
+  h+=`<tr class="totrow"><td colspan="2">Total (${names.length} áreas)</td><td class="num">${fmt(T.n)}</td><td class="num">${fmt(T.alvo)}</td><td class="num">${fmt(T.doses)}</td><td class="num">${fmt(T.frascos)}</td><td class="num">${fmt(T.seringas)}</td><td class="num">${fmt(T.caixas)}</td><td class="num">${fmt(T.cartoes)}</td><td class="num">${T.fichas}</td><td class="num">${T.livro}</td></tr>`;
+  tb.innerHTML=h;
 }
 
 function areaRegionCode(area){
@@ -987,13 +1039,18 @@ function renderAll(){
   safe(()=>renderMap(filteredRows, f),'mapa');
   safe(()=>renderTable(filteredRows),'tabela');
   safe(()=>renderLogTable(filteredRows),'logística');
+  safe(()=>renderSumTable(filteredRows),'resumo');
+  safe(()=>renderLogSumTable(filteredRows),'resumo logística');
   safe(()=>renderCharts(filteredRows),'gráficos');
   safe(()=>renderDataQualityWarning(),'qualidade');
   let scope = 'Âmbito: nacional';
   if(f.area!=='__all__') scope = 'Âmbito: área '+f.area+(f.region!=='__all__'?' ('+regionLabel(f.region)+')':'');
   else if(f.region!=='__all__') scope = 'Âmbito: região '+regionLabel(f.region);
   document.getElementById('scopeLabel').textContent = scope+' · '+filteredRows.length+' submissão(ões) · ● = área com dados';
-  document.getElementById('tableTitle').textContent = 'Detalhe por área sanitária — '+scope.replace('Âmbito: ','');
+  const sc=scope.replace('Âmbito: ','');
+  document.getElementById('tableTitle').textContent = 'Detalhe por área sanitária — '+sc;
+  document.getElementById('sumTitle').textContent = 'Resumo por área sanitária — '+sc;
+  document.getElementById('logSumTitle').textContent = 'Resumo do plano de estimativa de necessidades — vacinas e consumíveis, por área sanitária — '+sc;
   if(f.area!=='__all__') safe(()=>showSidePanel(f.area),'painel');
 }
 
@@ -1038,6 +1095,7 @@ renderKPIs([]);
 try{ renderMap([]); }catch(e){}
 renderTable([]);
 renderLogTable([]);
+try{ renderSumTable([]); renderLogSumTable([]); }catch(e){}
 if(SNAPSHOT && SNAPSHOT.main){
   loadFlatPayload(SNAPSHOT, 'Instantâneo Kobo', 'pill');
 }
