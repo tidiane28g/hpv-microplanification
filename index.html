@@ -7,7 +7,6 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -52,9 +51,15 @@
   .kpi-mini .lbl{font-size:11.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.02em;}
   .kpi-mini .val{font-size:19px;font-weight:800;color:var(--who-blue-dark);margin-top:2px;}
   .kpi-mini .sub{font-size:11px;color:var(--muted);margin-top:1px;}
+  .grid2>*{min-width:0}
   .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;align-items:start;}
   @media(max-width:980px){.grid2{grid-template-columns:1fr;}}
   .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px;}
+  .hbars{padding:2px 0}.hb-row{margin:7px 0}.hb-lab{font-size:11px;color:#33475B;margin-bottom:2px}
+  .hb-bar{display:flex;align-items:center;gap:8px}.hb-tot{background:#1F4E78;height:14px;border-radius:3px;min-width:3px;overflow:hidden;flex:0 1 auto}
+  .hb-con{background:#2A8C82;height:100%}.hb-n{font-size:11px;color:#33475B;white-space:nowrap}
+  .hb-leg,.donut-leg{font-size:10.5px;color:#6B7C8C;margin-top:8px}.hb-leg i,.donut-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 8px;vertical-align:-1px}.hb-leg i:first-child{margin-left:0}
+  .donutbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.donut{width:150px;height:150px;flex:0 0 auto}.donut-leg div{margin:5px 0;font-size:12px;color:#33475B}.donut-leg i{margin-left:0}
   .card h3{margin:0 0 10px;font-size:14px;color:var(--who-blue-dark);}
   #map{height:480px;border-radius:8px;}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px;}
@@ -197,11 +202,11 @@
       </div>
       <div class="card">
         <h3>Locais por tipo</h3>
-        <canvas id="chartTipos" height="180"></canvas>
+        <div id="chartTipos" class="hbars"></div>
       </div>
       <div class="card">
         <h3>Meninas: escolarizadas vs fora da escola</h3>
-        <canvas id="chartPop" height="180"></canvas>
+        <div id="chartPop" class="donutbox"></div>
       </div>
     </div>
   </div>
@@ -749,6 +754,7 @@ Object.keys(FORM_META.areasByRegion).forEach(reg=>{
 });
 
 function renderMap(rows, flt){
+  if(!map) return;
   flt = flt || {region:'__all__', area:'__all__'};
   const filtered = flt.region!=='__all__' || flt.area!=='__all__';
   const byAreaGeo = {};
@@ -901,49 +907,38 @@ function selectArea(area){
   renderAll();
   const side=document.getElementById('sidePanel'); if(side && side.scrollIntoView && window.innerWidth<980) side.scrollIntoView({behavior:'smooth'});
 }
-const emptyMsgPlugin={ id:'emptyMsg', afterDraw(ch){
-  const has = ch.data.datasets.some(d=>d.data.some(v=>v>0));
-  if(has) return;
-  const {ctx,chartArea:a}=ch; if(!a) return;
-  ctx.save(); ctx.textAlign='center'; ctx.fillStyle='#6B7C8C'; ctx.font='12px sans-serif';
-  ctx.fillText('Sem dados para o âmbito seleccionado', (a.left+a.right)/2, (a.top+a.bottom)/2); ctx.restore();
-}};
-function wrapLabel(s,n){
-  const w=String(s).split(' '), out=[]; let cur='';
-  w.forEach(x=>{ if((cur+' '+x).trim().length>n && cur){ out.push(cur); cur=x; } else cur=(cur+' '+x).trim(); });
-  if(cur) out.push(cur); return out;
-}
+function escHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function renderCharts(rows){
   const f=currentFilter();
-  // Locais por tipo: locais recenseados (sites) no âmbito, agrupados por tipo de local
+  // Locais por tipo (sem dependências externas)
   const sitesScope = siteRows.filter(s=>
     (f.area==='__all__' || s.area_sanitaria===f.area) &&
     (f.region==='__all__' || areaRegionCode(s.area_sanitaria)===f.region));
-  const tipoOrder = (FORM_META.choiceLabels && FORM_META.choiceLabels.tipo_site) ? Object.keys(FORM_META.choiceLabels.tipo_site) : [];
-  const counts = {}; const contact = {};
-  sitesScope.forEach(s=>{ const k=s.site_tipo||'(sem tipo)'; counts[k]=(counts[k]||0)+1; if(s.site_contactado==='sim'||s.site_contactado==='yes') contact[k]=(contact[k]||0)+1; });
+  const counts = {}, contact = {};
+  sitesScope.forEach(s=>{ const k=s.site_tipo||'(sem tipo)'; counts[k]=(counts[k]||0)+1; if(s.site_contactado==='sim') contact[k]=(contact[k]||0)+1; });
   const keys = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
-  const lab = k=> (choiceLabel('tipo_site',k)||k);
-  if(charts.tipos) charts.tipos.destroy();
-  charts.tipos = new Chart(document.getElementById('chartTipos'), {
-    type:'bar',
-    data:{ labels: keys.map(k=>wrapLabel(lab(k),20)), datasets:[
-      {label:'Locais recenseados', data: keys.map(k=>counts[k]), backgroundColor:'#1F4E78'},
-      {label:'Contactados', data: keys.map(k=>contact[k]||0), backgroundColor:'#2A8C82'}
-    ]},
-    options:{indexAxis:'y', responsive:true, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{ticks:{font:{size:10}}}, x:{beginAtZero:true, ticks:{precision:0}}}},
-    plugins:[emptyMsgPlugin]
-  });
-
+  const box = document.getElementById('chartTipos');
+  if(!keys.length){ box.innerHTML='<div class="empty">Sem dados para o âmbito seleccionado</div>'; }
+  else {
+    const max = Math.max.apply(null, keys.map(k=>counts[k]));
+    box.innerHTML = keys.map(k=>{
+      const tot=counts[k], con=contact[k]||0;
+      return `<div class="hb-row"><div class="hb-lab">${escHtml(choiceLabel('tipo_site',k)||k)}</div>
+        <div class="hb-bar" title="${con} contactados de ${tot}"><div class="hb-tot" style="width:${(100*tot/max).toFixed(1)}%"><div class="hb-con" style="width:${tot?(100*con/tot).toFixed(1):0}%"></div></div><span class="hb-n">${con}/${tot}</span></div></div>`;
+    }).join('') + '<div class="hb-leg"><i style="background:#1F4E78"></i>Recenseados <i style="background:#2A8C82"></i>Contactados (n contactados / n locais)</div>';
+  }
+  // Meninas: escolarizadas vs fora da escola (donut SVG)
   const agg = aggregateByArea(rows);
   let escol=0, fora=0; Object.values(agg).forEach(r=>{ escol+=r.alvo_escolarizadas; fora+=r.alvo_fora_escola; });
-  if(charts.pop) charts.pop.destroy();
-  charts.pop = new Chart(document.getElementById('chartPop'), {
-    type:'doughnut',
-    data:{ labels:['Escolarizadas','Fora da escola'], datasets:[{data:[escol,fora], backgroundColor:['#2A8C82','#E0A731']}]},
-    options:{responsive:true, aspectRatio:1.3, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}},
-    plugins:[emptyMsgPlugin]
-  });
+  const pbox = document.getElementById('chartPop'), tot=escol+fora;
+  if(!tot){ pbox.innerHTML='<div class="empty">Sem dados para o âmbito seleccionado</div>'; return; }
+  const R=52, C=2*Math.PI*R, pe=escol/tot;
+  pbox.innerHTML = `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="Escolarizadas ${escol}, fora da escola ${fora}">
+      <circle cx="70" cy="70" r="${R}" fill="none" stroke="#E0A731" stroke-width="22"/>
+      <circle cx="70" cy="70" r="${R}" fill="none" stroke="#2A8C82" stroke-width="22" stroke-dasharray="${(C*pe).toFixed(2)} ${C.toFixed(2)}" transform="rotate(-90 70 70)"/>
+      <text x="70" y="67" text-anchor="middle" font-size="15" font-weight="700" fill="#1B2A3A">${fmt(tot)}</text>
+      <text x="70" y="82" text-anchor="middle" font-size="8" fill="#6B7C8C">meninas</text></svg>
+    <div class="donut-leg"><div><i style="background:#2A8C82"></i>Escolarizadas <b>${fmt(escol)}</b> (${Math.round(100*pe)}%)</div><div><i style="background:#E0A731"></i>Fora da escola <b>${fmt(fora)}</b> (${100-Math.round(100*pe)}%)</div></div>`;
 }
 
 function regionLabel(code){ return choiceLabel('regioes', code) || code; }
@@ -987,18 +982,19 @@ function renderAll(){
   const f = currentFilter();
   const filteredRows = mainRows.filter(r=>
     (f.region==='__all__' || r.regiao===f.region) && (f.area==='__all__' || r.area_sanitaria===f.area));
-  renderKPIs(filteredRows);
-  renderMap(filteredRows, f);
-  renderTable(filteredRows);
-  renderLogTable(filteredRows);
-  renderCharts(filteredRows);
-  renderDataQualityWarning();
+  const safe=(fn,name)=>{ try{ fn(); }catch(e){ console.error('Erro em '+name+':',e); } };
+  safe(()=>renderKPIs(filteredRows),'KPIs');
+  safe(()=>renderMap(filteredRows, f),'mapa');
+  safe(()=>renderTable(filteredRows),'tabela');
+  safe(()=>renderLogTable(filteredRows),'logística');
+  safe(()=>renderCharts(filteredRows),'gráficos');
+  safe(()=>renderDataQualityWarning(),'qualidade');
   let scope = 'Âmbito: nacional';
   if(f.area!=='__all__') scope = 'Âmbito: área '+f.area+(f.region!=='__all__'?' ('+regionLabel(f.region)+')':'');
   else if(f.region!=='__all__') scope = 'Âmbito: região '+regionLabel(f.region);
   document.getElementById('scopeLabel').textContent = scope+' · '+filteredRows.length+' submissão(ões) · ● = área com dados';
   document.getElementById('tableTitle').textContent = 'Detalhe por área sanitária — '+scope.replace('Âmbito: ','');
-  if(f.area!=='__all__') showSidePanel(f.area);
+  if(f.area!=='__all__') safe(()=>showSidePanel(f.area),'painel');
 }
 
 // ---------- embedded snapshot + automatic hosted source ----------
@@ -1036,10 +1032,10 @@ async function tryHostedJson(){
 }
 function hostedNote(msg){ try{ if(location.protocol==='file:') return; const el=document.getElementById('lastUpdate'); if(el) el.textContent += ' · ⚠ '+msg; }catch(_){} }
 
-initMap();
+try{ initMap(); }catch(e){ console.error('Mapa indisponível (Leaflet não carregou):',e); const m=document.getElementById('map'); if(m) m.innerHTML='<div class="empty" style="padding:30px">Mapa indisponível: a biblioteca cartográfica não carregou (rede bloqueada?). Os restantes quadros funcionam normalmente.</div>'; map=null; }
 buildRegionOptions();
 renderKPIs([]);
-renderMap([]);
+try{ renderMap([]); }catch(e){}
 renderTable([]);
 renderLogTable([]);
 if(SNAPSHOT && SNAPSHOT.main){
