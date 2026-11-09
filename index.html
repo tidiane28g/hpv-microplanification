@@ -1046,6 +1046,10 @@ function imgMap(rows){
   feats.forEach(ft=>{ const a=byGeo[ft.properties.AREA_SAN]; const val=a&&a.val_data;
     g.fillStyle=statusColor(a?{hasData:true,pctContact:a.nb_sites_total?a.nb_sites_contactados/a.nb_sites_total:0}:null); g.strokeStyle=val?'#123047':'#ffffff'; g.lineWidth=val?3:1;
     polys(ft).forEach(p=>{ g.beginPath(); p.forEach((ring,ri)=>{ ring.forEach(([x,y],i)=>{ const px=ox+(x-x0)*k*sc, py=oy+(y1-y)*sc; i?g.lineTo(px,py):g.moveTo(px,py); }); g.closePath(); }); g.fill('evenodd'); g.stroke(); }); });
+  if(filtered){ g.textAlign='center'; g.textBaseline='middle'; g.font=_fontStack(Math.max(13,Math.min(20,Math.round(520/Math.sqrt(feats.length+4)/2))),'700');
+    feats.forEach(ft=>{ const big=polys(ft).map(p=>p[0]).sort((a,b)=>b.length-a.length)[0]; let mx0=1e9,mx1=-1e9,my0=1e9,my1=-1e9; big.forEach(([x,y])=>{mx0=Math.min(mx0,x);mx1=Math.max(mx1,x);my0=Math.min(my0,y);my1=Math.max(my1,y);});
+      const px=ox+((mx0+mx1)/2-x0)*k*sc, py=oy+(y1-(my0+my1)/2)*sc; const nm=String(ft.properties.AREA_SAN).replace('Bar?','Bara'); g.lineWidth=4; g.strokeStyle='#ffffff'; g.strokeText(nm,px,py); g.fillStyle='#0B1F2E'; g.fillText(nm,px,py); });
+    g.textAlign='left'; g.textBaseline='top'; }
   const leg=[['#2E9E5B','Avançado (≥80% dos locais contactados)'],['#E0A731','Em curso (40–79%)'],['#D5473B','Iniciado (<40%)'],['#B9C2C9','Sem microplano']];
   leg.forEach((l,i)=>{ g.fillStyle=l[0]; g.fillRect(W-340,160+i*52,30,30); g.fillStyle='#1B2A3A'; g.font=_fontStack(18); g.fillText(l[1],W-295,165+i*52); });
   g.strokeStyle='#123047'; g.lineWidth=3; g.strokeRect(W-340,160+4*52,30,30); g.fillStyle='#1B2A3A'; g.fillText('Validado pela região',W-295,165+4*52);
@@ -1221,6 +1225,7 @@ async function tryHostedJson(){
     const j = await r.json();
     if(!j || !Array.isArray(j.main)){ hostedNote('kobo_data.json inválido'); return false; }
     loadFlatPayload(j, 'Ligação automática Kobo', 'pill live');
+    try{ ['helpToggle','helpBox'].forEach(id=>{const e=document.getElementById(id); if(e) e.style.display='none';}); }catch(_){}
     return true;
   }catch(e){ hostedNote('erro ao ler kobo_data.json: '+(e&&e.message||e)); return false; }
 }
