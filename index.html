@@ -314,6 +314,10 @@ const geoAreaNormIndex = {};
 AREAS_GEOJSON.features.forEach(f=>{
   geoAreaNormIndex[normJS(f.properties.AREA_SAN)] = f.properties.AREA_SAN;
 });
+const AREA_RENAME = {'F Se':'Fasse'};
+Object.keys(FORM_META.areasByRegion).forEach(r=>{ FORM_META.areasByRegion[r] = Array.from(new Set(FORM_META.areasByRegion[r].map(a=>AREA_RENAME[a]||a))); });
+Object.assign(FORM_META.areaAliasesNorm, {'cmi':'hospital nacional simao mendes','djolo':'bairro militar'});
+const GEO_APPROX = {'cmi':'Correspondência aproximada: assinalado no polígono do Hospital Nacional Simão Mendes (aire do CMI)','djolo':'Centro de saúde dentro de Bairro Militar: partilha o seu polígono (os valores são somados no mapa)'};
 function resolveGeoAreaName(areaCode){
   const n = normJS(areaCode);
   if(geoAreaNormIndex[n]) return geoAreaNormIndex[n];
@@ -370,7 +374,7 @@ function parseMainRowsFromObjects(dataArr){
   mainRows = dataArr.map(row=>{
     const g = (f)=>getField(row, idx, f);
     const regiao = decodeSelect('regiao', g('regiao'));
-    const area_sanitaria = decodeSelect('area_sanitaria', g('area_sanitaria'));
+    const area_sanitaria = (a=>AREA_RENAME[a]||a)(decodeSelect('area_sanitaria', g('area_sanitaria')));
     return {
       _id: g('_id') || g('_uuid') || '',
       regiao: regiao || '',
@@ -415,7 +419,7 @@ function parseSiteRowsRawFromObjects(dataArr){
     } else if(idx.latHeader && idx.lonHeader){
       lat = parseFloat(row[idx.latHeader]); lon = parseFloat(row[idx.lonHeader]);
     }
-    const area_direct = decodeSelect('area_sanitaria', g('area_sanitaria'));
+    const area_direct = (a=>AREA_RENAME[a]||a)(decodeSelect('area_sanitaria', g('area_sanitaria')));
     const parentKey = g('_submission__id') || g('_parent_index') || g('_submission_id') || g('parent_index') || g('_submission__uuid');
     return {
       area_sanitaria_direct: area_direct || '',
@@ -687,6 +691,16 @@ function renderDataQualityWarning(){
 
 const SUM_FIELDS = ['alvo_rotina','alvo_mac','alvo_escolarizadas','alvo_fora_escola','nb_sites_total','nb_sites_contactados','nb_sites_escolas','nb_sites_nao_escolas','rh_vacinadores_necessarios','logistica_doses','logistica_seringas','logistica_caixas','logistica_frascos','logistica_cartoes'];
 // A same area can have several submissions (each with different sites): aggregate them per area.
+function mergeGeoAgg(rows){
+  const by={};
+  Object.values(aggregateByArea(rows)).forEach(r=>{
+    const gn=resolveGeoAreaName(r.area_sanitaria); if(!gn) return;
+    const cur=by[gn];
+    if(!cur){ by[gn]=Object.assign({},r,{_parts:[r.area_sanitaria]}); }
+    else { SUM_FIELDS.forEach(f=>cur[f]+=r[f]); cur._parts.push(r.area_sanitaria); if(!r.val_data) cur.val_data=''; }
+  });
+  return by;
+}
 function aggregateByArea(rows){
   const out = {};
   rows.forEach(r=>{
@@ -712,7 +726,7 @@ function aggregateByArea(rows){
 function renderKPIs(rows){
   const aggAreas = Object.values(aggregateByArea(rows));
   const totAreasComDados = aggAreas.length;
-  const totAreas = AREAS_GEOJSON.features.length;
+  const totAreas = Object.values(FORM_META.areasByRegion).reduce((n,l)=>n+l.length,0);
   const sumSites = rows.reduce((a,r)=>a+r.nb_sites_total,0);
   const sumContact = rows.reduce((a,r)=>a+r.nb_sites_contactados,0);
   const pctContact = sumSites? Math.round(100*sumContact/sumSites):0;
@@ -772,11 +786,7 @@ function renderMap(rows, flt){
   if(!map) return;
   flt = flt || {region:'__all__', area:'__all__'};
   const filtered = flt.region!=='__all__' || flt.area!=='__all__';
-  const byAreaGeo = {};
-  Object.values(aggregateByArea(rows)).forEach(r=>{
-    const geoName = resolveGeoAreaName(r.area_sanitaria);
-    if(geoName) byAreaGeo[geoName] = r;
-  });
+  const byAreaGeo = mergeGeoAgg(rows);
   function inScope(feat){
     if(!filtered) return true;
     const m = geoMeta[feat.properties.AREA_SAN] || {area: feat.properties.AREA_SAN, region: feat.properties.REG_SAN};
@@ -800,7 +810,7 @@ function renderMap(rows, flt){
       const pct = a && a.nb_sites_total ? Math.round(100*a.nb_sites_contactados/a.nb_sites_total):0;
       const m = geoMeta[feat.properties.AREA_SAN];
       const regLab = a ? regionLabel(a.regiao) : (m ? regionLabel(m.region) : feat.properties.REG_SAN);
-      layer.bindTooltip(`<b>${feat.properties.AREA_SAN}</b> (${regLab})` + (a?`<br>${a.nb_sites_contactados}/${a.nb_sites_total} locais contactados (${pct}%)`:'<br>Sem microplano carregado'));
+      layer.bindTooltip(`<b>${feat.properties.AREA_SAN}</b> (${regLab})` + (a?`<br>${a.nb_sites_contactados}/${a.nb_sites_total} locais contactados (${pct}%)`+(a._parts&&a._parts.length>1?`<br><i>inclui: ${a._parts.join(' + ')}</i>`:(GEO_APPROX[normJS(a.area_sanitaria)]?`<br><i>${a.area_sanitaria}: mapa aproximado</i>`:'')):'<br>Sem microplano carregado'));
       layer.on('click', ()=>{ const nm=a ? a.area_sanitaria : feat.properties.AREA_SAN; if(a) selectArea(nm); else showSidePanel(nm); });
       if(filtered && inScope(feat)) scopedLayers.push(layer);
     }
@@ -831,7 +841,7 @@ function renderTable(rows){
     tbody.innerHTML = data.map(r=>{
       const difTag = r.dif_acesso_existe==='sim' ? '<span class="tag bad">Sim</span>' : '<span class="tag no">Não</span>';
       const valTag = r.val_data ? '<span class="tag ok">✓</span>' : '<span class="tag mid">Pendente</span>';
-      const geoWarn = resolveGeoAreaName(r.area_sanitaria) ? '' : ' <span class="pill warn" title="Sem correspondência no geojson">sem mapa</span>';
+      const geoWarn = resolveGeoAreaName(r.area_sanitaria) ? (GEO_APPROX[normJS(r.area_sanitaria)]?` <span class="pill" title="${GEO_APPROX[normJS(r.area_sanitaria)]}">≈ mapa</span>`:'') : ' <span class="pill warn" title="Sem correspondência no geojson">sem mapa</span>';
       return `<tr onclick="selectArea('${r.area_sanitaria.replace(/'/g,"\\'")}')">
         <td>${regionLabel(r.regiao)}</td><td><b>${r.area_sanitaria}</b>${geoWarn}</td>${showResp?`<td class="cut" title="${String(r.responsavel).replace(/"/g,'&quot;')}">${r.responsavel}</td>`:''}
         <td>${r.nb_sites_total}</td><td>${r.pctC}%</td><td>${fmt(r.alvo_rotina)}</td><td>${fmt(r.alvo_mac)}</td>
@@ -1034,7 +1044,7 @@ function _frame(w,h,title,sub){
 function _scopeText(){const f=currentFilter(); return f.area!=='__all__'?'Área '+f.area:(f.region!=='__all__'?'Região '+regionLabel(f.region):'Âmbito nacional');}
 function imgMap(rows){
   const flt=currentFilter(); const filtered=flt.region!=='__all__'||flt.area!=='__all__';
-  const byGeo={}; Object.values(aggregateByArea(rows)).forEach(r=>{const gn=resolveGeoAreaName(r.area_sanitaria); if(gn) byGeo[gn]=r;});
+  const byGeo=mergeGeoAgg(rows);
   const feats=AREAS_GEOJSON.features.filter(ft=>{ if(!filtered) return true; const m=geoMeta[ft.properties.AREA_SAN]||{area:ft.properties.AREA_SAN,region:ft.properties.REG_SAN}; return (flt.region==='__all__'||m.region===flt.region)&&(flt.area==='__all__'||m.area===flt.area); });
   if(!feats.length) return null;
   const polys=ft=>ft.geometry.type==='Polygon'?[ft.geometry.coordinates]:ft.geometry.coordinates;
