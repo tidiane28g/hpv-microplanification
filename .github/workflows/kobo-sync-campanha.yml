@@ -33,7 +33,7 @@ jobs:
         run: |
           git config user.name "kobo-sync"
           git config user.email "kobo-sync@users.noreply.github.com"
-          git add -A kobo_cov.json kobo_sup.json
+                    for f in kobo_cov.json kobo_sup.json; do [ -f "$f" ] && git add "$f"; done
           if ! git diff --staged --quiet; then
             git commit -m "Mise à jour des données Kobo (campagne)"
             git push || (git pull --rebase && git push)
