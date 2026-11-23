@@ -1003,7 +1003,7 @@ function mkTable(id, cols, getRows, searchId, def){
   if (searchId) $(searchId).addEventListener('input', draw);
   DRAWS.push(draw);
 }
-const mk = (id, cfg) => { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), cfg); };
+const mk = (id, cfg) => { if (charts[id]) charts[id].destroy(); charts[id] = new Chart($(id), prepCfg(cfg, id)); };
 const covCol = v => v >= 80 ? '#0E6E5C' : v >= 50 ? '#C8862A' : '#B5432E';
 const supCol = v => v >= 90 ? '#0E6E5C' : v >= 75 ? '#C8862A' : '#B5432E';
 
@@ -1201,6 +1201,48 @@ function fitMap(){ if (!map || $('tab-ov').hidden) return; map.invalidateSize();
 ['mLayer','mInd','mTiles'].forEach(id => $(id).addEventListener('change', renderMap));
 /* ================= ligação automática Kobo + exportação (adicionado) ================= */
 if (window.Chart) Chart.defaults.animation = false;
+
+/* ---- etiquetas de valores nos gráficos (plugin interno, sem bibliotecas) ---- */
+const pc1 = v => (Math.round(v * 10) / 10).toString().replace('.', ',') + '%';
+const VL = {
+  chOvDay:{fmt:(v, di) => fmtN(v), combo:true},
+  chOvReg:{fmt:v => pc1(v), rot:true},
+  chCovDay:{total:true, fmt:v => fmtN(v)},
+  chCovReg:{fmt:pc1}, chCovDif:{fmt:v => fmtN(v)},
+  chSupSec:{fmt:pc1}, chSupReg:{fmt:pc1}, chSupNC:{fmt:pc1},
+  chSupDay:{fmt:(v, di) => di === 0 ? pc1(v) : fmtN(v), combo:true}
+};
+function prepCfg(cfg, id){ const s = VL[id]; if (!s) return cfg; const h = (cfg.options || {}).indexAxis === 'y';
+  cfg.options = cfg.options || {}; cfg.options.layout = {padding:h ? {right:46, top:4} : {top:s.rot ? 40 : 22, right:6}}; return cfg; }
+Chart.register({id:'vlab',
+  afterDatasetsDraw(ch){
+    const s = VL[ch.canvas.id]; if (!s) return;
+    const c = ch.ctx, h = (ch.config.options || {}).indexAxis === 'y', area = ch.chartArea, INK = '#1B2E29';
+    c.save(); c.font = '600 11px "Source Sans 3", sans-serif'; c.textBaseline = 'middle';
+    const halo = (t, x, y) => { c.lineWidth = 3; c.strokeStyle = 'rgba(255,255,255,.92)'; c.lineJoin = 'round'; c.strokeText(t, x, y); c.fillStyle = INK; c.fillText(t, x, y); };
+    if (s.total){
+      c.textAlign = 'center';
+      ch.data.labels.forEach((_, i) => { let tot = 0, topY = null, x = null;
+        ch.data.datasets.forEach((d, di) => { if (!ch.isDatasetVisible(di)) return; const v = +d.data[i] || 0, el = ch.getDatasetMeta(di).data[i]; tot += v; if (v && el){ if (topY === null || el.y < topY) topY = el.y; x = el.x; } });
+        if (tot > 0 && topY !== null) halo(s.fmt(tot), x, topY - 9); });
+    } else ch.data.datasets.forEach((d, di) => {
+      if (!ch.isDatasetVisible(di)) return;
+      const meta = ch.getDatasetMeta(di), isLine = meta.type === 'line';
+      meta.data.forEach((el, i) => {
+        const v = d.data[i]; if (v === null || v === undefined || !+v || isNaN(v)) return;
+        const t = s.fmt(+v, di);
+        if (h){ c.textAlign = 'left'; halo(t, el.x + 6, el.y); }
+        else if (isLine){ c.textAlign = 'center'; halo(t, el.x, el.y - 11); }
+        else if (s.rot){ const w = c.measureText(t).width; c.save();
+          if (el.y - w - 10 > area.top - 30 && el.y - w - 10 > 0){ c.translate(el.x, el.y - 6); c.rotate(-Math.PI / 2); c.textAlign = 'left'; c.fillStyle = INK; c.fillText(t, 0, 0); }
+          else { c.translate(el.x, el.y + 6); c.rotate(-Math.PI / 2); c.textAlign = 'right'; c.fillStyle = '#fff'; c.fillText(t, 0, 0); }
+          c.restore(); }
+        else { c.textAlign = 'center';
+          if (s.combo && Math.abs(el.base - el.y) > 24){ c.fillStyle = '#fff'; c.fillText(t, el.x, el.base - 12); } else halo(t, el.x, el.y - 9); }
+      });
+    });
+    c.restore();
+  }});
 const GEO_APX = ['Morés'];
 const GEO_NOTE = '≈ ' + GEO_APX.join(', ') + ': limite aproximada traçada a partir do centro GPS da área (a substituir pelo limite oficial). ';
 const HOSTED = {cov:'kobo_cov.json', sup:'kobo_sup.json'};
